@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import requests
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime
 
 from final import (
     predict_total_and_menus,
@@ -9,21 +9,19 @@ from final import (
     compute_total_mae,
 )
 
-# 파일명 충돌 방지 (prophet.py → prophet_model.py)
 from prophet_model import train_prophet_model
-# step3.py → XGBoost_model.py
 from XGBoost_model import train_xgb_models
 
 
 CSV_PATH = "ai_ideaton.csv"
 WEEKDAY_KR = ["월", "화", "수", "목", "금", "토", "일"]
 
+
 # --------------------------------------------------------------
 # 페이지 설정
 # --------------------------------------------------------------
 st.set_page_config(page_title="AI Cafeteria", layout="wide")
 
-# 🔥 KeyError 방지 — 세션 초기화
 if "page" not in st.session_state:
     st.session_state["page"] = "main"
 
@@ -32,12 +30,13 @@ if "page" not in st.session_state:
 # 기온 API
 # =======================================================
 def fetch_temperature(dt):
-    if hasattr(dt, "date"):
+    """오늘 기준 16일까지는 실제 예측 값, 그 이후는 fallback"""
+    if isinstance(dt, datetime):
         dt = dt.date()
 
     LAT, LON = 37.275, 127.132
-    ds = dt.strftime("%Y-%m-%d")
     today = date.today()
+    ds = dt.strftime("%Y-%m-%d")
 
     # 과거 기온
     if dt < today:
@@ -54,26 +53,28 @@ def fetch_temperature(dt):
         except:
             return 10.0
 
-    # 미래 기온
-    else:
-        url = (
-            "https://api.open-meteo.com/v1/forecast?"
-            f"latitude={LAT}&longitude={LON}"
-            "&daily=temperature_2m_min,temperature_2m_max"
-            "&forecast_days=16"
-            "&timezone=Asia%2FSeoul"
-        )
-        try:
-            r = requests.get(url, timeout=5).json()
-            dates = r["daily"]["time"]
-            if ds not in dates:
-                return 10.0
+    # 미래 (최대 16일)
+    url = (
+        "https://api.open-meteo.com/v1/forecast?"
+        f"latitude={LAT}&longitude={LON}"
+        "&daily=temperature_2m_min,temperature_2m_max"
+        "&forecast_days=16"
+        "&timezone=Asia%2FSeoul"
+    )
 
-            idx = dates.index(ds)
-            return float((r["daily"]["temperature_2m_min"][idx] +
-                          r["daily"]["temperature_2m_max"][idx]) / 2)
-        except:
-            return 10.0
+    try:
+        r = requests.get(url, timeout=5).json()
+        dates = r["daily"]["time"]
+
+        if ds not in dates:
+            return 10.0  # fallback
+
+        idx = dates.index(ds)
+        tmin = r["daily"]["temperature_2m_min"][idx]
+        tmax = r["daily"]["temperature_2m_max"][idx]
+        return float((tmin + tmax) / 2)
+    except:
+        return 10.0
 
 
 # =======================================================
@@ -93,26 +94,16 @@ def load_menus():
 
 
 # =======================================================
-# 이번 주 월~금 생성
+# 📌 선택한 날짜 → 그 주 월~금 반환
 # =======================================================
-def this_week_dates():
-    today = date.today()
-    wd = today.weekday()
-
-    if wd == 4:      # 금요일
-        monday = today - timedelta(days=4)
-    elif wd == 5:    # 토요일
-        monday = today + timedelta(days=2)
-    elif wd == 6:    # 일요일
-        monday = today + timedelta(days=1)
-    else:
-        monday = today - timedelta(days=wd)
-
+def get_week_dates(ref_date):
+    wd = ref_date.weekday()  # 0=월 ~ 6=일
+    monday = ref_date - timedelta(days=wd)
     return [monday + timedelta(days=i) for i in range(5)]
 
 
 # =======================================================
-# 날짜 카드
+# 날짜 카드 UI
 # =======================================================
 def day_card(title, k_opts, c_opts, j_opts, w_opts, dt):
 
@@ -131,14 +122,14 @@ def day_card(title, k_opts, c_opts, j_opts, w_opts, dt):
     jap = st.selectbox("일식 메뉴", j_opts, key=f"jap_{title}")
     wes = st.selectbox("양식 메뉴", w_opts, key=f"wes_{title}")
 
-    temp_auto = fetch_temperature(dt)
-    temp = st.number_input("기온(℃)", value=float(temp_auto), key=f"temp_{title}")
+    auto_temp = fetch_temperature(dt)
+    temp = st.number_input("기온(℃)", value=float(auto_temp), key=f"temp_{title}")
 
     return kor, chi, jap, wes, temp
 
 
 # =======================================================
-# 신뢰도 설명 문구
+# 신뢰도 요약
 # =======================================================
 def readable_error_summary():
     try:
@@ -155,10 +146,10 @@ def readable_error_summary():
 
 정도의 예측 오차가 있습니다.
 
-총 판매량 기준에서도 평균 약 **{int(tot['total_mae'])}그릇** 정도 차이가 발생할 수 있습니다.
+총판매량 기준으로도 평균 약 **{int(tot['total_mae'])}그릇** 정도 차이가 발생합니다.
 """
     except:
-        return "최근 데이터 부족으로 신뢰도 요약을 제공할 수 없습니다."
+        return "최근 데이터가 부족하여 신뢰도 요약을 제공할 수 없습니다."
 
 
 # =======================================================
@@ -166,10 +157,15 @@ def readable_error_summary():
 # =======================================================
 def show_main():
     df_hist, k_opts, c_opts, j_opts, w_opts = load_menus()
-    dates = this_week_dates()
 
     st.title("🍽 AI 식당 판매량 예측")
     st.caption("영양사 · 운영팀을 위한 간단하고 직관적인 예측 도구")
+
+    # ----------------------------------------
+    # 📅 주 선택 UI
+    # ----------------------------------------
+    selected_day = st.date_input("예측할 주 선택 (해당 날짜가 포함된 주가 자동 선택됩니다)", value=date.today())
+    dates = get_week_dates(selected_day)
 
     header = st.columns([8, 2])
     with header[1]:
@@ -200,7 +196,7 @@ def show_main():
 
     st.markdown("---")
 
-    if st.button("📈 이번 주 예측하기", type="primary"):
+    if st.button("📈 선택한 주 예측하기", type="primary"):
         rows = []
 
         for title, info in inputs.items():
@@ -261,11 +257,10 @@ def show_record():
         from final import is_exam_day, is_festival_day, is_vacation_day
 
         df = pd.read_csv(CSV_PATH)
-
         ts = pd.to_datetime(rec_date)
         ds = ts.strftime("%Y-%m-%d")
 
-        # 기존 날짜 삭제 후 새 기록 저장
+        # 기존 날짜 삭제 후 새 거래 입력
         df = df[df["date"] != ds]
 
         new = {
