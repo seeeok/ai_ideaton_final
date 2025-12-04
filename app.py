@@ -31,25 +31,15 @@ if "page" not in st.session_state:
 # =======================================================
 # 기온 API
 # =======================================================
-from datetime import datetime, timedelta, timezone
-
-# 한국 시간대 설정
-KST = timezone(timedelta(hours=9))
-
 def fetch_temperature(dt):
-    # dt가 datetime이면 date로 변환
     if hasattr(dt, "date"):
         dt = dt.date()
 
     LAT, LON = 37.275, 127.132
     ds = dt.strftime("%Y-%m-%d")
+    today = date.today()
 
-    # 🔥 한국 기준 '오늘 날짜'
-    today = datetime.now(KST).date()
-
-    # ---------------------
-    # 1) 과거 기온 조회
-    # ---------------------
+    # 과거 기온
     if dt < today:
         url = (
             "https://archive-api.open-meteo.com/v1/archive?"
@@ -64,30 +54,26 @@ def fetch_temperature(dt):
         except:
             return 10.0
 
-    # ---------------------
-    # 2) 오늘 이후 (미래예측)
-    # ---------------------
-    url = (
-        "https://api.open-meteo.com/v1/forecast?"
-        f"latitude={LAT}&longitude={LON}"
-        "&daily=temperature_2m_min,temperature_2m_max"
-        "&forecast_days=16"
-        "&timezone=Asia%2FSeoul"
-    )
-    try:
-        r = requests.get(url, timeout=5).json()
-        dates = r["daily"]["time"]
+    # 미래 기온
+    else:
+        url = (
+            "https://api.open-meteo.com/v1/forecast?"
+            f"latitude={LAT}&longitude={LON}"
+            "&daily=temperature_2m_min,temperature_2m_max"
+            "&forecast_days=16"
+            "&timezone=Asia%2FSeoul"
+        )
+        try:
+            r = requests.get(url, timeout=5).json()
+            dates = r["daily"]["time"]
+            if ds not in dates:
+                return 10.0
 
-        if ds not in dates:
+            idx = dates.index(ds)
+            return float((r["daily"]["temperature_2m_min"][idx] +
+                          r["daily"]["temperature_2m_max"][idx]) / 2)
+        except:
             return 10.0
-
-        idx = dates.index(ds)
-        tmin = r["daily"]["temperature_2m_min"][idx]
-        tmax = r["daily"]["temperature_2m_max"][idx]
-        return float((tmin + tmax) / 2)
-    except:
-        return 10.0
-
 
 
 # =======================================================
@@ -319,4 +305,3 @@ if st.session_state["page"] == "main":
     show_main()
 else:
     show_record()
-
