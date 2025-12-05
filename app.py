@@ -213,7 +213,7 @@ def show_record():
 
     temp = st.number_input("기온(℃)", value=10.0)
 
-    if st.button("⚡ 간단 저장하기", type="primary"):
+    if st.button("저장하기", type="primary"):
         from final import is_exam_day, is_festival_day, is_vacation_day
 
         df = pd.read_csv(CSV_PATH)
@@ -252,3 +252,4 @@ if st.session_state["page"] == "main":
     show_main()
 else:
     show_record()
+
