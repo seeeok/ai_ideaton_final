@@ -126,37 +126,37 @@ def train_prophet_model(csv_path=CSV_PATH):
     # 예측
     forecast = model.predict(future)
     print("✔ 365일 예측 완료")
-
-    # 저장
-    with open(PROPHET_MODEL_PATH, "wb") as f:
-        pickle.dump(model, f)
-
-    with open(FORECAST_PATH, "wb") as f:
-        pickle.dump(forecast, f)
-
+#=========================================================
+# 저장 (무료 Streamlit Cloud 한계로 인한 주석처리. zip 코드상으론 정상작동)
+#  with open(PROPHET_MODEL_PATH, "wb") as f:
+#     pickle.dump(model, f)
+#
+#   with open(FORECAST_PATH, "wb") as f:
+#      pickle.dump(forecast, f)
+#==========================================================
     print("✔ Prophet 모델 저장 완료")
 
     return model, forecast
 
 
 # ============================================================
-# 3) 저장된 Prophet 모델 로드
+# 3) 저장된 Prophet 모델 로드 (무료 Streamlit Cloud 한계로 인한 주석처리. zip 코드상으론 정상작동)
 # ============================================================
-def load_prophet_model():
-    if not os.path.exists(PROPHET_MODEL_PATH):
-        print("⚠ Prophet 모델 없음 → 학습 필요")
-        return None, None
-
-    try:
-        with open(PROPHET_MODEL_PATH, "rb") as f:
-            model = pickle.load(f)
-        with open(FORECAST_PATH, "rb") as f:
-            forecast = pickle.load(f)
-        return model, forecast
-
-    except Exception as e:
-        print("❌ Prophet 모델 불러오기 실패:", e)
-        return None, None
+#def load_prophet_model():
+#   if not os.path.exists(PROPHET_MODEL_PATH):
+#      print("⚠ Prophet 모델 없음 → 학습 필요")
+#     return None, None
+#
+#   try:
+#     with open(PROPHET_MODEL_PATH, "rb") as f:
+#         model = pickle.load(f)
+#    with open(FORECAST_PATH, "rb") as f:
+#       forecast = pickle.load(f)
+#  return model, forecast
+#
+#   except Exception as e:
+#      print("❌ Prophet 모델 불러오기 실패:", e)
+#     return None, None
 
 
 # ============================================================
@@ -165,3 +165,4 @@ def load_prophet_model():
 if __name__ == "__main__":
     print("이 파일은 직접 실행하지 않습니다.")
     print("Streamlit 또는 final.py에서 호출하세요.")
+
