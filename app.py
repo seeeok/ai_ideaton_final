@@ -287,7 +287,6 @@ def show_record():
         df.to_csv(CSV_PATH, index=False)
 
         # 모델 재학습
-        train_prophet_model()
         train_xgb_models()
 
         st.success(f"{ds} 데이터 저장 완료!")
@@ -300,3 +299,4 @@ if st.session_state["page"] == "main":
     show_main()
 else:
     show_record()
+
