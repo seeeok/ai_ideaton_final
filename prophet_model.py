@@ -127,6 +127,12 @@ def train_prophet_model(csv_path=CSV_PATH):
     forecast = model.predict(future)
     print("✔ 365일 예측 완료")
 
+    # 저장
+    with open(PROPHET_MODEL_PATH, "wb") as f:
+        pickle.dump(model, f)
+
+    with open(FORECAST_PATH, "wb") as f:
+        pickle.dump(forecast, f)
 
     print("✔ Prophet 모델 저장 완료")
 
@@ -159,4 +165,3 @@ def load_prophet_model():
 if __name__ == "__main__":
     print("이 파일은 직접 실행하지 않습니다.")
     print("Streamlit 또는 final.py에서 호출하세요.")
-
