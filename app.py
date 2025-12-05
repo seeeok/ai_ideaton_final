@@ -9,28 +9,19 @@ from final import (
     compute_total_mae,
 )
 
-from prophet_model import train_prophet_model
 from XGBoost_model import train_xgb_models
-
 
 CSV_PATH = "ai_ideaton.csv"
 WEEKDAY_KR = ["월", "화", "수", "목", "금", "토", "일"]
 
-
-# --------------------------------------------------------------
-# 페이지 설정
-# --------------------------------------------------------------
 st.set_page_config(page_title="AI Cafeteria", layout="wide")
 
 if "page" not in st.session_state:
     st.session_state["page"] = "main"
 
 
-# =======================================================
 # 기온 API
-# =======================================================
 def fetch_temperature(dt):
-    """오늘 기준 16일까지는 실제 예측 값, 그 이후는 fallback"""
     if isinstance(dt, datetime):
         dt = dt.date()
 
@@ -38,14 +29,12 @@ def fetch_temperature(dt):
     today = date.today()
     ds = dt.strftime("%Y-%m-%d")
 
-    # 과거 기온
     if dt < today:
         url = (
             "https://archive-api.open-meteo.com/v1/archive?"
             f"latitude={LAT}&longitude={LON}"
             f"&start_date={ds}&end_date={ds}"
-            "&daily=temperature_2m_mean"
-            "&timezone=Asia%2FSeoul"
+            "&daily=temperature_2m_mean&timezone=Asia%2FSeoul"
         )
         try:
             r = requests.get(url, timeout=5).json()
@@ -53,22 +42,17 @@ def fetch_temperature(dt):
         except:
             return 10.0
 
-    # 미래 (최대 16일)
     url = (
         "https://api.open-meteo.com/v1/forecast?"
         f"latitude={LAT}&longitude={LON}"
         "&daily=temperature_2m_min,temperature_2m_max"
-        "&forecast_days=16"
-        "&timezone=Asia%2FSeoul"
+        "&forecast_days=16&timezone=Asia%2FSeoul"
     )
-
     try:
         r = requests.get(url, timeout=5).json()
         dates = r["daily"]["time"]
-
         if ds not in dates:
-            return 10.0  # fallback
-
+            return 10.0
         idx = dates.index(ds)
         tmin = r["daily"]["temperature_2m_min"][idx]
         tmax = r["daily"]["temperature_2m_max"][idx]
@@ -77,9 +61,6 @@ def fetch_temperature(dt):
         return 10.0
 
 
-# =======================================================
-# 메뉴 카테고리 로드
-# =======================================================
 @st.cache_data
 def load_menus():
     df = pd.read_csv(CSV_PATH)
@@ -93,20 +74,13 @@ def load_menus():
     )
 
 
-# =======================================================
-# 📌 선택한 날짜 → 그 주 월~금 반환
-# =======================================================
 def get_week_dates(ref_date):
-    wd = ref_date.weekday()  # 0=월 ~ 6=일
+    wd = ref_date.weekday()
     monday = ref_date - timedelta(days=wd)
     return [monday + timedelta(days=i) for i in range(5)]
 
 
-# =======================================================
-# 날짜 카드 UI
-# =======================================================
 def day_card(title, k_opts, c_opts, j_opts, w_opts, dt):
-
     st.markdown(
         f"""
         <div style='background:#F3F3F3;padding:8px;border-radius:10px;
@@ -128,43 +102,35 @@ def day_card(title, k_opts, c_opts, j_opts, w_opts, dt):
     return kor, chi, jap, wes, temp
 
 
-# =======================================================
-# 신뢰도 요약
-# =======================================================
 def readable_error_summary():
     try:
         mae = compute_menu_mae()
         tot = compute_total_mae()
 
         return f"""
-최근 판매 데이터를 기준으로 보면, **평균적으로**
+최근 판매 데이터를 기준으로 보면, 평균적으로
 
-- 한식 약 **{int(mae['korean'])}그릇**
-- 중식 약 **{int(mae['chinese'])}그릇**
-- 일식 약 **{int(mae['japanese'])}그릇**
-- 양식 약 **{int(mae['western'])}그릇**
+- 한식 약 {int(mae['korean'])}그릇
+- 중식 약 {int(mae['chinese'])}그릇
+- 일식 약 {int(mae['japanese'])}그릇
+- 양식 약 {int(mae['western'])}그릇
 
 정도의 예측 오차가 있습니다.
 
-총판매량 기준으로도 평균 약 **{int(tot['total_mae'])}그릇** 정도 차이가 발생합니다.
+총판매량 기준으로도 약 {int(tot['total_mae'])}그릇 차이가 발생합니다.
 """
     except:
         return "최근 데이터가 부족하여 신뢰도 요약을 제공할 수 없습니다."
 
 
-# =======================================================
 # 메인 페이지
-# =======================================================
 def show_main():
     df_hist, k_opts, c_opts, j_opts, w_opts = load_menus()
 
     st.title("🍽 AI 식당 판매량 예측")
-    st.caption("영양사 · 운영팀을 위한 간단하고 직관적인 예측 도구")
+    st.caption("영양사 · 운영팀을 위한 직관적인 예측 도구")
 
-    # ----------------------------------------
-    # 📅 주 선택 UI
-    # ----------------------------------------
-    selected_day = st.date_input("예측할 주 선택 (해당 날짜가 포함된 주가 자동 선택됩니다)", value=date.today())
+    selected_day = st.date_input("예측할 주 선택", value=date.today())
     dates = get_week_dates(selected_day)
 
     header = st.columns([8, 2])
@@ -184,7 +150,6 @@ def show_main():
 
         with col:
             kor, chi, jap, wes, temp = day_card(title, k_opts, c_opts, j_opts, w_opts, dt)
-
             inputs[title] = {
                 "date": dt,
                 "kor": kor,
@@ -198,7 +163,6 @@ def show_main():
 
     if st.button("📈 선택한 주 예측하기", type="primary"):
         rows = []
-
         for title, info in inputs.items():
             res = predict_total_and_menus(
                 info["date"],
@@ -208,7 +172,6 @@ def show_main():
                 info["wes"],
                 info["temp"],
             )
-
             rows.append({
                 "날짜(요일)": title,
                 "한식": res["korean_sales"],
@@ -227,11 +190,8 @@ def show_main():
         st.markdown(readable_error_summary())
 
 
-# =======================================================
-# 판매 기록 입력 페이지
-# =======================================================
+# 기록 페이지
 def show_record():
-
     if st.button("← 돌아가기"):
         st.session_state["page"] = "main"
         st.rerun()
@@ -253,14 +213,12 @@ def show_record():
 
     temp = st.number_input("기온(℃)", value=10.0)
 
-    if st.button("저장하기", type="primary"):
+    if st.button("⚡ 간단 저장하기", type="primary"):
         from final import is_exam_day, is_festival_day, is_vacation_day
 
         df = pd.read_csv(CSV_PATH)
         ts = pd.to_datetime(rec_date)
         ds = ts.strftime("%Y-%m-%d")
-
-        # 기존 날짜 삭제 후 새 거래 입력
         df = df[df["date"] != ds]
 
         new = {
@@ -282,21 +240,15 @@ def show_record():
         }
 
         new = {col: new[col] for col in df.columns}
-
         df = pd.concat([df, pd.DataFrame([new])], ignore_index=True)
         df.to_csv(CSV_PATH, index=False)
 
-        # 모델 재학습
-        train_xgb_models()
-
-        st.success(f"{ds} 데이터 저장 완료!")
+        st.success(f"{ds} 저장 완료!")
+        st.stop()
 
 
-# =======================================================
 # 라우팅
-# =======================================================
 if st.session_state["page"] == "main":
     show_main()
 else:
     show_record()
-
